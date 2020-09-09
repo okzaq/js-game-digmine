@@ -1,7 +1,10 @@
 const BLOCK_NUM_HEIGHT = 23;
 const BLOCK_NUM_WIDTH = 20;
-// const BACK_GROUND_COLOR = 'dimgray';
 const BACK_GROUND_COLOR = '#404040';
+
+// Block per second
+const HORIZONTAL_SPEED = 0.25;
+const VERTICAL_SPEED = 0.5;
 
 var GAME_MAP = {
   MAP_HEIGHT : 0,
@@ -20,47 +23,91 @@ var background;
 var map;
 var player;
 
-// function getRgb(colorName) {
-//   var canvas = document.createElement('canvas');
-//   canvas.style.height = 1;
-//   canvas.style.width = 1;
-//   var ctx = canvas.getContext('2d');
-//   ctx.fillStyle = colorName;
-//   ctx.fillRect(0, 0, 1, 1);
-//   var img = ctx.getImageData(0, 0, 1, 1);
-//   return {r : img.data[0], g : img.data[1], b : img.data[2]};
-// }
-
-class Actor {
+class Player {
   constructor(x, y, direction, color, ctx, image) {
     this.x = x;
     this.y = y;
-    this.direction = direction;  // up:0, right:1, down:2, left:3
-
-    this.preX = x;
-    this.preY = y;
+    this.rx = x * GAME_MAP.BLOCK_SIZE;
+    this.ry = y * GAME_MAP.BLOCK_SIZE;
+    this.direction = direction;
+    this.preX = this.x;
+    this.preY = this.y;
+    this.prerX = this.rx;
+    this.prerY = this.ry;
     this.preDirection = direction;
-
     this.color = color;
     this.ctx = ctx;
-
     this.images = image;
-    // this.images[DIRECTION.UP] = createActorImage(imageMatrix, color, DIRECTION.UP);
-    // this.images[DIRECTION.RIGHT] = createActorImage(imageMatrix, color, DIRECTION.RIGHT);
-    // this.images[DIRECTION.DOWN] = createActorImage(imageMatrix, color, DIRECTION.DOWN);
-    // this.images[DIRECTION.LEFT] = createActorImage(imageMatrix, color, DIRECTION.LEFT);
+    this.isMoving = false;
+    this.lastMoveTime = 0;
+    this.timerId = null;
+  }
+
+  existsBlock(x, y) {
+    // TODO: 衝突判定
+    return false;
+  }
+
+  isJumping() {
+    return false;
+  }
+
+  allowMoved(dx, dy, direction) {
+    if (this.existsBlock(this.x + dx, this.y + dy)) {
+      return false;
+    }
+    if (this.isMoving) {
+      return false;
+    }
+    return true;
   }
 
   preMove(dx, dy, direction) {
+    if (!this.allowMoved(direction)) return;
+
     this.preX = this.x + dx;
     this.preY = this.y + dy;
     if (this.preX < 0) this.preX = 0;
-    if ((this.preX + GAME_MAP.BLOCK_SIZE) > GAME_MAP.MAP_WIDTH) this.preX = GAME_MAP.MAP_WIDTH - GAME_MAP.BLOCK_SIZE;
+    if (this.preX >= BLOCK_NUM_WIDTH) this.preX = BLOCK_NUM_WIDTH - 1;
     if (this.preY < 0) this.preY = 0;
-    if ((this.preY + GAME_MAP.BLOCK_SIZE) > GAME_MAP.MAP_HEIGHT) this.preY = GAME_MAP.MAP_HEIGHT - GAME_MAP.BLOCK_SIZE;
-    this.x = this.preX;
-    this.y = this.preY;
+    if (this.preY >= BLOCK_NUM_HEIGHT) this.preY = BLOCK_NUM_HEIGHT - 1;
+    this.prerX = this.preX * GAME_MAP.BLOCK_SIZE;
+    this.prerY = this.preY * GAME_MAP.BLOCK_SIZE;
     this.preDirection = direction;
+    this.isMoving = true;
+    this.lastMoveTime = new Date().getTime();
+    this.timerId = setInterval(function(){
+      player.updateCurrentCoordinate();
+    }, 100);
+  }
+
+  clearTimer() {
+    clearInterval(this.timerId);
+    this.timerId = null;
+  }
+
+  updateCurrentCoordinate() {
+    var currentTime = new Date().getTime();
+    var dt = (currentTime - this.lastMoveTime) / 1000.0;
+
+    var dx = GAME_MAP.BLOCK_SIZE * HORIZONTAL_SPEED * dt;
+    var dy = GAME_MAP.BLOCK_SIZE * VERTICAL_SPEED * dt;
+    if (this.x > this.preX) dx *= -1;
+    if (this.y > this.preY) dy *= -1;
+    var tmpX = this.x + dx;
+    var tmpY = this.y + dy;
+
+    if ((dx > 0 && tmpX > this.preX) || (dx < 0 && tmpX < this.preX)) tmpX = this.preX;
+    if ((dy > 0 && tmpY > this.preY) || (dy < 0 && tmpY < this.preY)) tmpY = this.preY;
+    this.x = tmpX;
+    this.y = tmpY;
+    this.rx = tmpX * GAME_MAP.BLOCK_SIZE;
+    this.ry = tmpY * GAME_MAP.BLOCK_SIZE;
+
+    if (this.x == this.preX && this.y == this.preY) {
+      this.isMoving = false;
+      this.clearTimer();
+    }
   }
 
   draw() {
@@ -71,8 +118,8 @@ class Actor {
     // this.ctx.beginPath();
     this.ctx.fillStyle = this.color;
     this.ctx.fillRect(
-      this.x,
-      this.y,
+      this.rx,
+      this.ry,
       GAME_MAP.BLOCK_SIZE,
       GAME_MAP.BLOCK_SIZE);
   };
@@ -191,10 +238,11 @@ class GameMap {
 }
 
 window.addEventListener('load', init);
-window.addEventListener('keydown', movePlayer);
-window.addEventListener('resize', resizeCanvases);
 
 function init() {
+  window.addEventListener('keydown', movePlayer);
+  window.addEventListener('resize', resizeCanvases);
+
   calcMapSize();
 
   background = new BackGround(createCanvas());
@@ -203,7 +251,7 @@ function init() {
   map = new GameMap(createCanvas());
   map.createMapImage();
 
-  player = new Actor(0, 0, DIRECTION.RIGHT, 'blue', createCanvas(), null);
+  player = new Player(0, 0, DIRECTION.RIGHT, 'blue', createCanvas());
   player.draw();
 
   requestAnimationFrame(update);
@@ -262,8 +310,8 @@ function render() {
 }
 
 function movePlayer(e) {
-  var step = GAME_MAP.BLOCK_SIZE;
-  // var step = 1;
+  // var step = GAME_MAP.BLOCK_SIZE;
+  var step = 1;
   var dx = 0;
   var dy = 0;
   var direction = player.direction;
