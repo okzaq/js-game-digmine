@@ -24,14 +24,33 @@ const DIRECTION = {
 };
 
 const DUG_STATUS = {
-  THROUGH : -1,
-  DUG : 0,
-  GROUND : 1,
+  SKY : 0,
+  DUG : 1,
+  GROUND : 2,
+  CAVITY : 3,
 };
+
+const BOMB_STATUS = {
+  NONE : 0,
+  // Around boms : 1 - 8,
+  BOMB : 255,
+};
+const BOMB_NUM_COLOR = [
+  "#FFFFFF",  // 0(not use)
+  "#00FFFF",  // 1
+  "#00FFBF",  // 2
+  "#BFFF00",  // 3
+  "#FFFF00",  // 4
+  "#FFBF00",  // 5
+  "#FF7F00",  // 6
+  "#FF3F00",  // 7
+  "#FF0000",  // 8
+];
 
 var background;
 var map;
 var player;
+var isGameOver = false;
 
 class Player {
   constructor(x, y, direction, color, ctx, image) {
@@ -50,14 +69,18 @@ class Player {
     this.images = image;
     this.isMoving = false;
     this.lastMoveTime = 0;
-    this.timerId = null;
   }
 
   isJumping() {
     return false;
   }
 
-  allowMoved(dx, dy, direction) {
+  allowMoved(preX, preY, preDirection) {
+    if (this.direction == DIRECTION.UP) {
+      if (preDirection == DIRECTION.LEFT || preDirection == DIRECTION.RIGHT) {
+        return true;
+      }
+    }
     if (this.isMoving) {
       return false;
     }
@@ -65,35 +88,34 @@ class Player {
   }
 
   preMove(dx, dy, direction) {
-    if (!this.allowMoved(direction)) return;
+    var preX = this.x + dx;
+    var preY = this.y + dy;
+    if (!this.allowMoved(preX, preY, direction)) return;
 
-    this.preX = this.x + dx;
-    this.preY = this.y + dy;
-    if (this.preX < 0) this.preX = 0;
-    if (this.preX >= BLOCK_NUM_WIDTH) this.preX = BLOCK_NUM_WIDTH - 1;
-    if (this.preY < 0) this.preY = 0;
-    if (this.preY >= BLOCK_NUM_HEIGHT) this.preY = BLOCK_NUM_HEIGHT - 1;
+    if (preX < 0) preX = 0;
+    if (preX >= BLOCK_NUM_WIDTH) preX = BLOCK_NUM_WIDTH - 1;
+    if (preY < 0) preY = 0;
+    if (preY >= BLOCK_NUM_HEIGHT) preY = BLOCK_NUM_HEIGHT - 1;
 
-    if (map.existsBlock(this.preX, this.preY)) {
-      map.dig(this.preX, this.preY);
-      this.preX = this.x;
-      this.preY = this.y;
+    if (map.existsBlock(preX, preY)) {
+      this.preDirection = direction;
+      this.direction = direction;
+      map.dig(preX, preY);
       return;
     }
 
-    this.prerX = this.preX * GAME_MAP.BLOCK_SIZE;
-    this.prerY = this.preY * GAME_MAP.BLOCK_SIZE;
+    if (this.direction == DIRECTION.UP) {
+      if (direction == DIRECTION.LEFT) direction = DIRECTION.LEFT_UP;
+      if (direction == DIRECTION.RIGHT) direction = DIRECTION.RIGHT_UP;
+    }
+
+    this.preX = preX;
+    this.preY = preY;
+    this.prerX = preX * GAME_MAP.BLOCK_SIZE;
+    this.prerY = preY * GAME_MAP.BLOCK_SIZE;
     this.preDirection = direction;
     this.isMoving = true;
     this.lastMoveTime = new Date().getTime();
-    // this.timerId = setInterval(function(){
-    //   player.updateCurrentCoordinate();
-    // }, 100);
-  }
-
-  clearTimer() {
-    // clearInterval(this.timerId);
-    // this.timerId = null;
   }
 
   updateCurrentCoordinate() {
@@ -120,7 +142,6 @@ class Player {
 
     if (this.x == this.preX && this.y == this.preY) {
       this.isMoving = false;
-      this.clearTimer();
     }
   }
 
@@ -148,21 +169,104 @@ class Player {
   };
 }
 
-class BackGround {
+class BombMap {
   constructor(ctx) {
     this.ctx = ctx;
+    this.bombNum = 10;
+    this.boms = [];
+    this.clearBombs();
+    this.bomsNumString = "";
+  }
+
+  clearBombs() {
+    for (var x = 0; x < BLOCK_NUM_WIDTH; x++) {
+      this.boms[x] = [];
+      for (var y = 0; y < BLOCK_NUM_HEIGHT; y++) {
+        this.boms[x][y] = BOMB_STATUS.NONE;
+      }
+    }
+  }
+
+  rand(min, max) {
+    // min <= rand < max
+    return Math.floor(Math.random() * (max - min)) + min;
+  }
+
+  createBombRandom() {
+    var i = 0;
+    while (i < this.bombNum) {
+      var bombX = this.rand(0, BLOCK_NUM_WIDTH);
+      var bombY = this.rand(2, BLOCK_NUM_HEIGHT - 2);
+      if (this.boms[bombX][bombY] == BOMB_STATUS.BOMB) continue;
+      this.boms[bombX][bombY] = BOMB_STATUS.BOMB;
+      i++;
+
+      for (var y = bombY - 1; y <= bombY + 1; y++) {
+        for (var x = bombX - 1; x <= bombX + 1; x++) {
+          if (x < 0 || BLOCK_NUM_WIDTH <= x) continue;
+          if (y < 0 || BLOCK_NUM_HEIGHT <= y) continue;
+          if (this.boms[x][y] == BOMB_STATUS.BOMB) continue;
+          this.boms[x][y]++;
+        }
+      }
+    }
+    this.bomsNumString = `Bombs x ${this.bombNum}`;
+  }
+
+  existsBomb(x, y) {
+    return this.boms[x][y] == BOMB_STATUS.BOMB;
   }
 
   draw() {
     this.ctx.clearRect(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
+    this.ctx.textBaseline = 'middle';
+    this.ctx.textAlign = 'center';
+    this.ctx.font = GAME_MAP.BLOCK_SIZE + "px serif";
 
-    // this.ctx.beginPath();
-    this.ctx.fillStyle = BACK_GROUND_COLOR;
-    this.ctx.fillRect(
-      0,
-      0,
-      GAME_MAP.MAP_WIDTH,
-      GAME_MAP.BLOCK_SIZE);
+    var halfSize = Math.round(GAME_MAP.BLOCK_SIZE / 2);
+    for (var x = 0; x < BLOCK_NUM_WIDTH; x++) {
+      for (var y = 1; y < BLOCK_NUM_HEIGHT - 2; y++) {
+        var s = this.boms[x][y];
+        if (s == BOMB_STATUS.NONE) continue;
+        if (s == BOMB_STATUS.BOMB) continue;
+        // if (map.existsBlock(x, y)) continue;
+
+        this.ctx.fillStyle = BOMB_NUM_COLOR[s];
+
+        var rx = x * GAME_MAP.BLOCK_SIZE + halfSize;
+        var ry = y * GAME_MAP.BLOCK_SIZE + halfSize;
+        this.ctx.fillText(s, rx, ry);
+      }
+    }
+
+    this.ctx.textBaseline = 'top';
+    this.ctx.textAlign = 'left';
+    this.ctx.font = GAME_MAP.BLOCK_SIZE + "px serif";
+    this.ctx.fillStyle = "tomato";
+    this.ctx.fillText(
+        this.bomsNumString,
+        GAME_MAP.MAP_WIDTH - this.ctx.measureText(this.bomsNumString).width,
+        0);
+
+    if (isGameOver) {
+      this.ctx.arc(
+          (map.endX * GAME_MAP.BLOCK_SIZE) + GAME_MAP.BLOCK_SIZE / 2,
+          (map.endY * GAME_MAP.BLOCK_SIZE) + GAME_MAP.BLOCK_SIZE / 2,
+          GAME_MAP.BLOCK_SIZE,// / 2,
+          0 * Math.PI / 180,
+          360 * Math.PI / 180,
+          false);
+      this.ctx.fillStyle = "red";
+      this.ctx.fill();
+      this.ctx.textBaseline = 'middle';
+      this.ctx.textAlign = 'center';
+      this.ctx.font = (GAME_MAP.BLOCK_SIZE * 2.5) + "px bold serif";
+      this.ctx.fillStyle = "black";
+      this.ctx.fillText(
+          "GAME OVER !!",
+          GAME_MAP.MAP_WIDTH / 2,
+          GAME_MAP.MAP_HEIGHT / 2);
+    }
   }
 }
 
@@ -178,10 +282,13 @@ class GameMap {
         this.dugMap[x][y] = DUG_STATUS.GROUND;
       }
     }
+    var topBlockStatus = this.isAdoveGround ? DUG_STATUS.SKY : DUG_STATUS.CAVITY;
     for (var x = 0; x < BLOCK_NUM_WIDTH; x++) {
-      this.dugMap[x][0] = DUG_STATUS.THROUGH;
-      this.dugMap[x][BLOCK_NUM_HEIGHT - 2] = DUG_STATUS.THROUGH;
+      this.dugMap[x][0] = topBlockStatus;
+      this.dugMap[x][BLOCK_NUM_HEIGHT - 2] = DUG_STATUS.CAVITY;
     }
+    this.endX = 0;
+    this.endY = 0;
   }
 
   drawLine(x1, y1, x2, y2) {
@@ -200,6 +307,12 @@ class GameMap {
         this.ctx.drawImage(img, xOffset, yOffset, img.width, img.height);
       }
     }
+    // this.ctx.fillStyle = 'saddlebrown';
+    // this.ctx.fillRect(
+    //   0,
+    //   0,
+    //   GAME_MAP.MAP_WIDTH,
+    //   GAME_MAP.MAP_HEIGHT);
   }
 
   drawGrid() {
@@ -255,11 +368,6 @@ class GameMap {
 
     this.drawGround();
     this.drawGrass();
-    this.clearMapRect(
-      0,
-      GAME_MAP.BLOCK_SIZE * (BLOCK_NUM_HEIGHT - 2),
-      GAME_MAP.MAP_WIDTH,
-      GAME_MAP.BLOCK_SIZE);
     this.drawGrid();
     this.drawSky();
   }
@@ -271,16 +379,16 @@ class GameMap {
 
   resizeMapImage() {
     this.drawDefaultMapImage();
-    this.clearDugBlocks();
     this.image = this.ctx.getImageData(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
   }
 
   dig(x, y) {
     this.dugMap[x][y] = DUG_STATUS.DUG;
-    var tmpCtx = createCanvasWithoutAppend();
-    tmpCtx.putImageData(this.image, 0, 0);
-    this.clearDugBlock(tmpCtx, x, y);
-    this.image = tmpCtx.getImageData(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
+    if (bombMap.existsBomb(x, y)) {
+      isGameOver = true;
+      this.endX = x;
+      this.endY = y;
+    }
   }
 
   existsBlock(x, y) {
@@ -290,7 +398,8 @@ class GameMap {
   clearDugBlocks() {
     for (var x = 0; x < BLOCK_NUM_WIDTH; x++) {
       for (var y = 0; y < BLOCK_NUM_HEIGHT; y++) {
-        if (this.dugMap[x][y] == DUG_STATUS.DUG) {
+        if (this.dugMap[x][y] == DUG_STATUS.DUG ||
+            this.dugMap[x][y] == DUG_STATUS.CAVITY) {
           this.clearDugBlock(this.ctx, x, y);
         }
       }
@@ -298,22 +407,27 @@ class GameMap {
   }
 
   clearDugBlock(ctx, x, y) {
-    ctx.clearRect(
-      (x * GAME_MAP.BLOCK_SIZE) + 1,
-      (y * GAME_MAP.BLOCK_SIZE) + 1,
-      GAME_MAP.BLOCK_SIZE - 1,
-      GAME_MAP.BLOCK_SIZE - 1);
-    // ctx.fillStyle = "rgba(255,255,255,0)"//BACK_GROUND_COLOR;
-    // ctx.fillRect(
+    // this.ctx.clearRect(
     //   (x * GAME_MAP.BLOCK_SIZE) + 1,
     //   (y * GAME_MAP.BLOCK_SIZE) + 1,
     //   GAME_MAP.BLOCK_SIZE - 1,
     //   GAME_MAP.BLOCK_SIZE - 1);
+    ctx.fillStyle = BACK_GROUND_COLOR;
+    // ctx.fillStyle = "rgba(255,255,255,0)";
+    ctx.fillRect(
+      (x * GAME_MAP.BLOCK_SIZE) + 1,
+      (y * GAME_MAP.BLOCK_SIZE) + 1,
+      GAME_MAP.BLOCK_SIZE - 2,
+      GAME_MAP.BLOCK_SIZE - 2);
   }
 
   draw() {
+    // this.ctx.clearRect(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
+    // this.drawDefaultMapImage();
+    // this.clearDugBlocks();
     this.ctx.clearRect(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
     this.ctx.putImageData(this.image, 0, 0);
+    this.clearDugBlocks();
   }
 }
 
@@ -325,11 +439,12 @@ function init() {
 
   calcMapSize();
 
-  background = new BackGround(createCanvas());
-  background.draw();
-
   map = new GameMap(createCanvas());
   map.createMapImage();
+
+  bombMap = new BombMap(createCanvas());
+  bombMap.createBombRandom();
+  bombMap.draw();
 
   player = new Player(0, 0, DIRECTION.RIGHT, 'blue', createCanvas());
   player.draw();
@@ -347,9 +462,9 @@ function resizeCanvases() {
   Array.prototype.forEach.call(selects, canvas => {
     resizeCanvas(canvas)
   });
-  background.draw();
   map.resizeMapImage();
   map.draw();
+  bombMap.draw();
   resizeTouchControlPads();
   player.resizeCanvas();
 }
@@ -382,13 +497,6 @@ function createCanvas() {
   return canvas.getContext('2d');
 }
 
-function createCanvasWithoutAppend() {
-  var canvas = document.createElement('canvas');
-  resizeCanvas(canvas);
-
-  return canvas.getContext('2d');
-}
-
 function update() {
   requestAnimationFrame(update);
 
@@ -396,55 +504,47 @@ function update() {
 }
 
 function render() {
-  // ctx.fillStyle = "black";
-  // ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  player.draw();
   map.draw();
-  background.draw();
+  bombMap.draw();
+  player.draw();
 }
 
 function moveLeft() {
+  if (isGameOver) return;
   player.preMove(-1, 0, DIRECTION.LEFT);
 }
 
 function moveUp() {
+  if (isGameOver) return;
   player.preMove(0, -1, DIRECTION.UP);
 }
 
 function moveRight() {
+  if (isGameOver) return;
   player.preMove(1, 0, DIRECTION.RIGHT);
 }
 
 function moveDown() {
+  if (isGameOver) return;
   player.preMove(0, 1, DIRECTION.DOWN);
 }
 
 function moveLeftUp() {
+  if (isGameOver) return;
   player.preMove(-1, -1, DIRECTION.LEFT_UP);
 }
 
 function moveRightUp() {
+  if (isGameOver) return;
   player.preMove(1, -1, DIRECTION.RIGHT_UP);
 }
 
 function movePlayer(e) {
   switch (e.keyCode) {
-    case 37:  // left
-      moveLeft();
-      break;
-
-    case 38:  // up
-      moveUp();
-      break;
-
-    case 39:  // right
-      moveRight();
-      break;
-
-    case 40:  // down
-      moveDown();
-      break;
+    case 37: moveLeft(); break;
+    case 38: moveUp(); break;
+    case 39: moveRight(); break;
+    case 40: moveDown(); break;
   }
 }
 
@@ -454,12 +554,14 @@ function resizeTouchControlPads() {
 }
 
 function resizeTouchControlPad(canvas) {
-  canvas.style.top    = canvas.dataset.y * GAME_MAP.BLOCK_SIZE;
-  canvas.style.left   = canvas.dataset.x * GAME_MAP.BLOCK_SIZE;
-  canvas.style.height = canvas.dataset.h * GAME_MAP.BLOCK_SIZE;
-  canvas.height       = canvas.dataset.h * GAME_MAP.BLOCK_SIZE;
-  canvas.style.width  = canvas.dataset.w * GAME_MAP.BLOCK_SIZE;
-  canvas.width        = canvas.dataset.w * GAME_MAP.BLOCK_SIZE;
+  var d = canvas.dataset;
+  var s = GAME_MAP.BLOCK_SIZE;
+  canvas.style.top    = d.y * s;
+  canvas.style.left   = d.x * s;
+  canvas.style.height = d.h * s;
+  canvas.height       = d.h * s;
+  canvas.style.width  = d.w * s;
+  canvas.width        = d.w * s;
 }
 
 function createTouchControlPad(x, y, w, h) {
