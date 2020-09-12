@@ -435,7 +435,7 @@ window.addEventListener('load', init);
 
 function init() {
   window.addEventListener('keydown', movePlayer);
-  window.addEventListener('resize', resizeCanvases);
+  // window.addEventListener('resize', resizeCanvases);
 
   calcMapSize();
 
