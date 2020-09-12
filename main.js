@@ -2,6 +2,8 @@ const BLOCK_NUM_HEIGHT = 23;
 const BLOCK_NUM_WIDTH = 20;
 const BACK_GROUND_COLOR = '#404040';
 
+const TOUCH_SPACE_SIZE_MIN = 5;
+
 // Block per second
 const HORIZONTAL_SPEED = 0.25;
 const VERTICAL_SPEED = 0.5;
@@ -17,6 +19,14 @@ const DIRECTION = {
   RIGHT : 1,
   LEFT : 2,
   DOWN : 3,
+  LEFT_UP : 4,
+  RIGHT_UP : 5,
+};
+
+const DUG_STATUS = {
+  THROUGH : -1,
+  DUG : 0,
+  GROUND : 1,
 };
 
 var background;
@@ -43,19 +53,11 @@ class Player {
     this.timerId = null;
   }
 
-  existsBlock(x, y) {
-    // TODO: 衝突判定
-    return false;
-  }
-
   isJumping() {
     return false;
   }
 
   allowMoved(dx, dy, direction) {
-    if (this.existsBlock(this.x + dx, this.y + dy)) {
-      return false;
-    }
     if (this.isMoving) {
       return false;
     }
@@ -71,22 +73,34 @@ class Player {
     if (this.preX >= BLOCK_NUM_WIDTH) this.preX = BLOCK_NUM_WIDTH - 1;
     if (this.preY < 0) this.preY = 0;
     if (this.preY >= BLOCK_NUM_HEIGHT) this.preY = BLOCK_NUM_HEIGHT - 1;
+
+    if (map.existsBlock(this.preX, this.preY)) {
+      map.dig(this.preX, this.preY);
+      this.preX = this.x;
+      this.preY = this.y;
+      return;
+    }
+
     this.prerX = this.preX * GAME_MAP.BLOCK_SIZE;
     this.prerY = this.preY * GAME_MAP.BLOCK_SIZE;
     this.preDirection = direction;
     this.isMoving = true;
     this.lastMoveTime = new Date().getTime();
-    this.timerId = setInterval(function(){
-      player.updateCurrentCoordinate();
-    }, 100);
+    // this.timerId = setInterval(function(){
+    //   player.updateCurrentCoordinate();
+    // }, 100);
   }
 
   clearTimer() {
-    clearInterval(this.timerId);
-    this.timerId = null;
+    // clearInterval(this.timerId);
+    // this.timerId = null;
   }
 
   updateCurrentCoordinate() {
+    if (!this.isMoving) {
+      return;
+    }
+
     var currentTime = new Date().getTime();
     var dt = (currentTime - this.lastMoveTime) / 1000.0;
 
@@ -110,7 +124,16 @@ class Player {
     }
   }
 
+  resizeCanvas() {
+    this.rx = this.x * GAME_MAP.BLOCK_SIZE;
+    this.ry = this.y * GAME_MAP.BLOCK_SIZE;
+    this.prerX = this.preX * GAME_MAP.BLOCK_SIZE;
+    this.prerY = this.preY * GAME_MAP.BLOCK_SIZE;
+  }
+
   draw() {
+    this.updateCurrentCoordinate();
+
     this.ctx.clearRect(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
 
     // this.ctx.putImageData(this.images[this.direction], this.x, this.y);
@@ -148,6 +171,17 @@ class GameMap {
     this.ctx = ctx;
     this.image = null;
     this.isAdoveGround = true;
+    this.dugMap = [];
+    for (var x = 0; x < BLOCK_NUM_WIDTH; x++) {
+      this.dugMap[x] = [];
+      for (var y = 0; y < BLOCK_NUM_HEIGHT; y++) {
+        this.dugMap[x][y] = DUG_STATUS.GROUND;
+      }
+    }
+    for (var x = 0; x < BLOCK_NUM_WIDTH; x++) {
+      this.dugMap[x][0] = DUG_STATUS.THROUGH;
+      this.dugMap[x][BLOCK_NUM_HEIGHT - 2] = DUG_STATUS.THROUGH;
+    }
   }
 
   drawLine(x1, y1, x2, y2) {
@@ -212,10 +246,11 @@ class GameMap {
   clearMapRect(x, y, w, h) {
     // this.ctx.beginPath();
     this.ctx.fillStyle = BACK_GROUND_COLOR;
+    // this.ctx.fillStyle = "rgba(255,255,255,0)";
     this.ctx.fillRect(x, y, w, h);
   }
 
-  createMapImage() {
+  drawDefaultMapImage() {
     this.ctx.clearRect(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
 
     this.drawGround();
@@ -227,8 +262,53 @@ class GameMap {
       GAME_MAP.BLOCK_SIZE);
     this.drawGrid();
     this.drawSky();
+  }
 
+  createMapImage() {
+    this.drawDefaultMapImage();
     this.image = this.ctx.getImageData(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
+  }
+
+  resizeMapImage() {
+    this.drawDefaultMapImage();
+    this.clearDugBlocks();
+    this.image = this.ctx.getImageData(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
+  }
+
+  dig(x, y) {
+    this.dugMap[x][y] = DUG_STATUS.DUG;
+    var tmpCtx = createCanvasWithoutAppend();
+    tmpCtx.putImageData(this.image, 0, 0);
+    this.clearDugBlock(tmpCtx, x, y);
+    this.image = tmpCtx.getImageData(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
+  }
+
+  existsBlock(x, y) {
+    return this.dugMap[x][y] == DUG_STATUS.GROUND;
+  }
+
+  clearDugBlocks() {
+    for (var x = 0; x < BLOCK_NUM_WIDTH; x++) {
+      for (var y = 0; y < BLOCK_NUM_HEIGHT; y++) {
+        if (this.dugMap[x][y] == DUG_STATUS.DUG) {
+          this.clearDugBlock(this.ctx, x, y);
+        }
+      }
+    }
+  }
+
+  clearDugBlock(ctx, x, y) {
+    ctx.clearRect(
+      (x * GAME_MAP.BLOCK_SIZE) + 1,
+      (y * GAME_MAP.BLOCK_SIZE) + 1,
+      GAME_MAP.BLOCK_SIZE - 1,
+      GAME_MAP.BLOCK_SIZE - 1);
+    // ctx.fillStyle = "rgba(255,255,255,0)"//BACK_GROUND_COLOR;
+    // ctx.fillRect(
+    //   (x * GAME_MAP.BLOCK_SIZE) + 1,
+    //   (y * GAME_MAP.BLOCK_SIZE) + 1,
+    //   GAME_MAP.BLOCK_SIZE - 1,
+    //   GAME_MAP.BLOCK_SIZE - 1);
   }
 
   draw() {
@@ -254,6 +334,10 @@ function init() {
   player = new Player(0, 0, DIRECTION.RIGHT, 'blue', createCanvas());
   player.draw();
 
+  // if ('ontouchstart' in document) {
+    createTouchControlPads();
+  // }
+
   requestAnimationFrame(update);
 }
 
@@ -264,6 +348,10 @@ function resizeCanvases() {
     resizeCanvas(canvas)
   });
   background.draw();
+  map.resizeMapImage();
+  map.draw();
+  resizeTouchControlPads();
+  player.resizeCanvas();
 }
 
 function resizeCanvas(canvas) {
@@ -294,6 +382,13 @@ function createCanvas() {
   return canvas.getContext('2d');
 }
 
+function createCanvasWithoutAppend() {
+  var canvas = document.createElement('canvas');
+  resizeCanvas(canvas);
+
+  return canvas.getContext('2d');
+}
+
 function update() {
   requestAnimationFrame(update);
 
@@ -304,37 +399,127 @@ function render() {
   // ctx.fillStyle = "black";
   // ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  background.draw();
-  map.draw();
   player.draw();
+  map.draw();
+  background.draw();
+}
+
+function moveLeft() {
+  player.preMove(-1, 0, DIRECTION.LEFT);
+}
+
+function moveUp() {
+  player.preMove(0, -1, DIRECTION.UP);
+}
+
+function moveRight() {
+  player.preMove(1, 0, DIRECTION.RIGHT);
+}
+
+function moveDown() {
+  player.preMove(0, 1, DIRECTION.DOWN);
+}
+
+function moveLeftUp() {
+  player.preMove(-1, -1, DIRECTION.LEFT_UP);
+}
+
+function moveRightUp() {
+  player.preMove(1, -1, DIRECTION.RIGHT_UP);
 }
 
 function movePlayer(e) {
-  // var step = GAME_MAP.BLOCK_SIZE;
-  var step = 1;
-  var dx = 0;
-  var dy = 0;
-  var direction = player.direction;
   switch (e.keyCode) {
     case 37:  // left
-      dx -= step;
-      direction = DIRECTION.LEFT;
+      moveLeft();
       break;
 
     case 38:  // up
-      dy -= step;
-      direction = DIRECTION.UP;
+      moveUp();
       break;
 
     case 39:  // right
-      dx += step;
-      direction = DIRECTION.RIGHT;
+      moveRight();
       break;
 
     case 40:  // down
-      dy += step;
-      direction = DIRECTION.DOWN;
+      moveDown();
       break;
   }
-  player.preMove(dx, dy, direction);
+}
+
+var touchControlPads = [];
+function resizeTouchControlPads() {
+  touchControlPads.forEach(canvas => this.resizeTouchControlPad(canvas));
+}
+
+function resizeTouchControlPad(canvas) {
+  canvas.style.top    = canvas.dataset.y * GAME_MAP.BLOCK_SIZE;
+  canvas.style.left   = canvas.dataset.x * GAME_MAP.BLOCK_SIZE;
+  canvas.style.height = canvas.dataset.h * GAME_MAP.BLOCK_SIZE;
+  canvas.height       = canvas.dataset.h * GAME_MAP.BLOCK_SIZE;
+  canvas.style.width  = canvas.dataset.w * GAME_MAP.BLOCK_SIZE;
+  canvas.width        = canvas.dataset.w * GAME_MAP.BLOCK_SIZE;
+}
+
+function createTouchControlPad(x, y, w, h) {
+  var canvas = document.createElement('canvas');
+
+  canvas.dataset.x = x;
+  canvas.dataset.y = y;
+  canvas.dataset.w = w;
+  canvas.dataset.h = h;
+  canvas.style.border = "solid 1px red";
+  resizeTouchControlPad(canvas);
+
+  document.getElementById('gamepanel').appendChild(canvas);
+
+  return canvas;
+}
+
+function createTouchControlPads() {
+  var eventName = 'click';
+  var leftUp = createTouchControlPad(
+    0,
+    0,
+    TOUCH_SPACE_SIZE_MIN,
+    TOUCH_SPACE_SIZE_MIN);
+  leftUp.addEventListener(eventName, moveLeftUp);
+
+  var up = createTouchControlPad(
+    TOUCH_SPACE_SIZE_MIN,
+    0,
+    BLOCK_NUM_WIDTH - (TOUCH_SPACE_SIZE_MIN * 2),
+    TOUCH_SPACE_SIZE_MIN);
+  up.addEventListener(eventName, moveUp);
+
+  var rightUp = createTouchControlPad(
+    BLOCK_NUM_WIDTH - TOUCH_SPACE_SIZE_MIN,
+    0,
+    TOUCH_SPACE_SIZE_MIN,
+    TOUCH_SPACE_SIZE_MIN);
+  rightUp.addEventListener(eventName, moveRightUp);
+
+  var left = createTouchControlPad(
+    0,
+    TOUCH_SPACE_SIZE_MIN,
+    TOUCH_SPACE_SIZE_MIN,
+    BLOCK_NUM_HEIGHT - (TOUCH_SPACE_SIZE_MIN * 2));
+  left.addEventListener(eventName, moveLeft);
+
+  var right = createTouchControlPad(
+    BLOCK_NUM_WIDTH - TOUCH_SPACE_SIZE_MIN,
+    TOUCH_SPACE_SIZE_MIN,
+    TOUCH_SPACE_SIZE_MIN,
+    BLOCK_NUM_HEIGHT - (TOUCH_SPACE_SIZE_MIN * 2));
+  right.addEventListener(eventName, moveRight);
+
+  var down = createTouchControlPad(
+    0,
+    BLOCK_NUM_HEIGHT - TOUCH_SPACE_SIZE_MIN,
+    BLOCK_NUM_WIDTH,
+    TOUCH_SPACE_SIZE_MIN);
+  down.addEventListener(eventName, moveDown);
+
+  touchControlPads = [leftUp, up, rightUp, left, right, down];
 }
