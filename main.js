@@ -83,11 +83,6 @@ class Player {
     if (isGameOver) return false;
     if (isClear) return false;
     if (toNextGame) return false;
-    // if (this.direction == DIRECTION.UP) {
-    //   if (preDirection == DIRECTION.LEFT || preDirection == DIRECTION.RIGHT) {
-    //     return true;
-    //   }
-    // }
     if (this.isMoving) return false;
 
     return true;
@@ -205,8 +200,8 @@ class Player {
     this.ctx.lineTo(
       this.rx + GAME_MAP.BLOCK_SIZE * 8 / 10,
       this.ry + GAME_MAP.BLOCK_SIZE * 8 / 10);
-      this.ctx.closePath();
-      this.ctx.stroke();
+    this.ctx.closePath();
+    this.ctx.stroke();
     // Pickaxe
     this.ctx.beginPath();
     this.ctx.fillStyle = "white";
@@ -285,7 +280,7 @@ class BombMap {
         var s = this.boms[x][y];
         if (s == BOMB_STATUS.NONE) continue;
         if (s == BOMB_STATUS.BOMB) continue;
-        // if (map.existsBlock(x, y)) continue;
+        if (map.existsBlock(x, y)) continue;
 
         this.ctx.fillStyle = BOMB_NUM_COLOR[s];
 
@@ -373,12 +368,6 @@ class GameMap {
         this.ctx.drawImage(img, xOffset, yOffset, img.width, img.height);
       }
     }
-    // this.ctx.fillStyle = 'saddlebrown';
-    // this.ctx.fillRect(
-    //   0,
-    //   0,
-    //   GAME_MAP.MAP_WIDTH,
-    //   GAME_MAP.MAP_HEIGHT);
   }
 
   drawGrid() {
@@ -586,9 +575,9 @@ function init() {
   nextMap = new NextGameMap(createCanvas());
   // nextMap.draw();
 
-  // if ('ontouchstart' in document) {
+  if ('ontouchstart' in document) {
     createTouchControlPads();
-  // }
+  }
 
   requestAnimationFrame(update);
 }
@@ -715,12 +704,46 @@ function createTouchControlPad(x, y, w, h) {
   canvas.dataset.y = y;
   canvas.dataset.w = w;
   canvas.dataset.h = h;
-  canvas.style.border = "solid 1px red";
+  // canvas.style.border = "solid 1px red";
   resizeTouchControlPad(canvas);
 
   document.getElementById('gamepanel').appendChild(canvas);
 
   return canvas;
+}
+
+function drawTouchPadArrow(canvas, x, y) {
+  var ctx = canvas.getContext('2d');
+
+  var x1, x2, x3, y1, y2, y3;
+  var width = canvas.width;
+  if (x == 0) {
+    x1 = width / 2 + width * 1 / 5 * -1;
+    x2 = width / 2 + width * 1 / 5 * 0;
+    x3 = width / 2 + width * 1 / 5 * 1;
+  } else {
+    x1 = width / 2 + width * 1 / 5 * -x;
+    x2 = width / 2 + width * 1 / 5 * x;
+    x3 = width / 2 + width * 1 / 5 * -x;
+  }
+  var height = canvas.height;
+  if (y == 0) {
+    y1 = height / 2 + height * 1 / 5 * -1;
+    y2 = height / 2 + height * 1 / 5 * 0;
+    y3 = height / 2 + height * 1 / 5 * 1;
+  } else {
+    y1 = height / 2 + height * 1 / 5 * -y;
+    y2 = height / 2 + height * 1 / 5 * y;
+    y3 = height / 2 + height * 1 / 5 * -y;
+  }
+
+  ctx.beginPath();
+  ctx.strokeStyle = "rgba(248, 248, 255, 0.5)";
+  ctx.lineWidth = GAME_MAP.BLOCK_SIZE / 2;
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.lineTo(x3, y3);
+  ctx.stroke();
 }
 
 function createTouchControlPads() {
@@ -737,7 +760,7 @@ function createTouchControlPads() {
     TOUCH_SPACE_SIZE_MIN,
     TOUCH_SPACE_SIZE_MIN,
     BLOCK_NUM_HEIGHT - (TOUCH_SPACE_SIZE_MIN * 2));
-  left.addEventListener(eventName, moveLeft);
+    left.addEventListener(eventName, moveLeft);
 
   var right = createTouchControlPad(
     BLOCK_NUM_WIDTH - TOUCH_SPACE_SIZE_MIN,
@@ -752,6 +775,11 @@ function createTouchControlPads() {
     BLOCK_NUM_WIDTH,
     TOUCH_SPACE_SIZE_MIN);
   down.addEventListener(eventName, moveDown);
+
+  drawTouchPadArrow(up, 0, -1);
+  drawTouchPadArrow(left, -1, 0);
+  drawTouchPadArrow(right, 1, 0);
+  drawTouchPadArrow(down, 0, 1);
 
   touchControlPads = [up, left, right, down];
 }
