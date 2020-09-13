@@ -167,15 +167,57 @@ class Player {
 
     this.ctx.clearRect(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
 
-    // this.ctx.putImageData(this.images[this.direction], this.x, this.y);
-
-    // this.ctx.beginPath();
-    this.ctx.fillStyle = this.color;
+    // Shoulder
+    this.ctx.beginPath();
+    this.ctx.fillStyle = "whitesmoke";
+    this.ctx.arc(
+      this.rx + GAME_MAP.BLOCK_SIZE * 5 / 10,
+      this.ry + GAME_MAP.BLOCK_SIZE * 6 / 10,
+      GAME_MAP.BLOCK_SIZE * 2 / 10,
+      0,
+      Math.PI,
+      true);
+    // Body
     this.ctx.fillRect(
-      this.rx,
-      this.ry,
-      GAME_MAP.BLOCK_SIZE,
-      GAME_MAP.BLOCK_SIZE);
+      this.rx + GAME_MAP.BLOCK_SIZE * 3 / 10,
+      this.ry + GAME_MAP.BLOCK_SIZE * 6 / 10,
+      GAME_MAP.BLOCK_SIZE * 4 / 10,
+      GAME_MAP.BLOCK_SIZE * 4 / 10);
+    this.ctx.fill();
+    // Head
+    this.ctx.beginPath();
+    this.ctx.fillStyle = "chocolate";
+    this.ctx.arc(
+      this.rx + GAME_MAP.BLOCK_SIZE * 5 / 10,
+      this.ry + GAME_MAP.BLOCK_SIZE * 3 / 10,
+      GAME_MAP.BLOCK_SIZE * 2 / 10,
+      0,
+      2 * Math.PI,
+      true);
+    this.ctx.fill();
+    // Pickaxe handle
+    this.ctx.beginPath();
+    this.ctx.fillStyle = "saddlebrown";
+    this.ctx.lineWidth = GAME_MAP.BLOCK_SIZE * 1 / 10;
+    this.ctx.moveTo(
+      this.rx + GAME_MAP.BLOCK_SIZE * 1 / 10,
+      this.ry + GAME_MAP.BLOCK_SIZE * 3 / 10);
+    this.ctx.lineTo(
+      this.rx + GAME_MAP.BLOCK_SIZE * 8 / 10,
+      this.ry + GAME_MAP.BLOCK_SIZE * 8 / 10);
+      this.ctx.closePath();
+      this.ctx.stroke();
+    // Pickaxe
+    this.ctx.beginPath();
+    this.ctx.fillStyle = "white";
+    this.ctx.arc(
+      this.rx + GAME_MAP.BLOCK_SIZE * 8 / 10,
+      this.ry + GAME_MAP.BLOCK_SIZE * 8 / 10,
+      GAME_MAP.BLOCK_SIZE * 7 / 10,
+      185 * Math.PI / 180,
+      240 * Math.PI / 180,
+      false);
+    this.ctx.stroke();
   };
 }
 
