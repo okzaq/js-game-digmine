@@ -7,6 +7,7 @@ const TOUCH_SPACE_SIZE_MIN = 5;
 // Block per second
 const HORIZONTAL_SPEED = 0.25;
 const VERTICAL_SPEED = 0.5;
+const MAP_MOVE_SPEED = 0.25;
 
 var GAME_MAP = {
   MAP_HEIGHT : 0,
@@ -50,7 +51,10 @@ const BOMB_NUM_COLOR = [
 var background;
 var map;
 var player;
+var nextMap;
 var isGameOver = false;
+var isClear = false;
+var toNextGame = false;
 
 class Player {
   constructor(x, y, direction, color, ctx, image) {
@@ -76,14 +80,16 @@ class Player {
   }
 
   allowMoved(preX, preY, preDirection) {
-    if (this.direction == DIRECTION.UP) {
-      if (preDirection == DIRECTION.LEFT || preDirection == DIRECTION.RIGHT) {
-        return true;
-      }
-    }
-    if (this.isMoving) {
-      return false;
-    }
+    if (isGameOver) return false;
+    if (isClear) return false;
+    if (toNextGame) return false;
+    // if (this.direction == DIRECTION.UP) {
+    //   if (preDirection == DIRECTION.LEFT || preDirection == DIRECTION.RIGHT) {
+    //     return true;
+    //   }
+    // }
+    if (this.isMoving) return false;
+
     return true;
   }
 
@@ -142,6 +148,10 @@ class Player {
 
     if (this.x == this.preX && this.y == this.preY) {
       this.isMoving = false;
+      if (this.y >= (BLOCK_NUM_HEIGHT - 2)) {
+        isClear = true;
+        setTimeout(function() {nextMap.toNext();}, 0);
+      }
     }
   }
 
@@ -252,7 +262,7 @@ class BombMap {
       this.ctx.arc(
           (map.endX * GAME_MAP.BLOCK_SIZE) + GAME_MAP.BLOCK_SIZE / 2,
           (map.endY * GAME_MAP.BLOCK_SIZE) + GAME_MAP.BLOCK_SIZE / 2,
-          GAME_MAP.BLOCK_SIZE,// / 2,
+          GAME_MAP.BLOCK_SIZE,
           0 * Math.PI / 180,
           360 * Math.PI / 180,
           false);
@@ -276,6 +286,12 @@ class GameMap {
     this.image = null;
     this.isAdoveGround = true;
     this.dugMap = [];
+    this.initDugMap();
+    this.endX = 0;
+    this.endY = 0;
+  }
+
+  initDugMap() {
     for (var x = 0; x < BLOCK_NUM_WIDTH; x++) {
       this.dugMap[x] = [];
       for (var y = 0; y < BLOCK_NUM_HEIGHT; y++) {
@@ -287,8 +303,6 @@ class GameMap {
       this.dugMap[x][0] = topBlockStatus;
       this.dugMap[x][BLOCK_NUM_HEIGHT - 2] = DUG_STATUS.CAVITY;
     }
-    this.endX = 0;
-    this.endY = 0;
   }
 
   drawLine(x1, y1, x2, y2) {
@@ -348,21 +362,6 @@ class GameMap {
     }
   }
 
-  clearMapCoordinate(x, y) {
-    this.clearMapRect(
-      x * GAME_MAP.BLOCK_SIZE,
-      y * GAME_MAP.BLOCK_SIZE,
-      GAME_MAP.BLOCK_SIZE,
-      GAME_MAP.BLOCK_SIZE);
-  }
-
-  clearMapRect(x, y, w, h) {
-    // this.ctx.beginPath();
-    this.ctx.fillStyle = BACK_GROUND_COLOR;
-    // this.ctx.fillStyle = "rgba(255,255,255,0)";
-    this.ctx.fillRect(x, y, w, h);
-  }
-
   drawDefaultMapImage() {
     this.ctx.clearRect(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
 
@@ -373,6 +372,7 @@ class GameMap {
   }
 
   createMapImage() {
+    this.initDugMap();
     this.drawDefaultMapImage();
     this.image = this.ctx.getImageData(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
   }
@@ -400,21 +400,15 @@ class GameMap {
       for (var y = 0; y < BLOCK_NUM_HEIGHT; y++) {
         if (this.dugMap[x][y] == DUG_STATUS.DUG ||
             this.dugMap[x][y] == DUG_STATUS.CAVITY) {
-          this.clearDugBlock(this.ctx, x, y);
+          this.clearDugBlock(x, y);
         }
       }
     }
   }
 
-  clearDugBlock(ctx, x, y) {
-    // this.ctx.clearRect(
-    //   (x * GAME_MAP.BLOCK_SIZE) + 1,
-    //   (y * GAME_MAP.BLOCK_SIZE) + 1,
-    //   GAME_MAP.BLOCK_SIZE - 1,
-    //   GAME_MAP.BLOCK_SIZE - 1);
-    ctx.fillStyle = BACK_GROUND_COLOR;
-    // ctx.fillStyle = "rgba(255,255,255,0)";
-    ctx.fillRect(
+  clearDugBlock(x, y) {
+    this.ctx.fillStyle = BACK_GROUND_COLOR;
+    this.ctx.fillRect(
       (x * GAME_MAP.BLOCK_SIZE) + 1,
       (y * GAME_MAP.BLOCK_SIZE) + 1,
       GAME_MAP.BLOCK_SIZE - 2,
@@ -422,12 +416,100 @@ class GameMap {
   }
 
   draw() {
-    // this.ctx.clearRect(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
-    // this.drawDefaultMapImage();
-    // this.clearDugBlocks();
     this.ctx.clearRect(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
     this.ctx.putImageData(this.image, 0, 0);
     this.clearDugBlocks();
+  }
+}
+
+class NextGameMap {
+  constructor(ctx) {
+    this.ctx = ctx;
+    this.width = BLOCK_NUM_WIDTH * GAME_MAP.BLOCK_SIZE;
+    this.height = (BLOCK_NUM_HEIGHT * 2 - 2) * GAME_MAP.BLOCK_SIZE;
+    this.nextMapOffsetY = (BLOCK_NUM_HEIGHT - 2) * GAME_MAP.BLOCK_SIZE;
+    this.image = new ImageData(this.width, this.height);
+    this.offset = 0;
+    this.lastMoveTime = 0;
+
+    var tmpCanvas = document.createElement('canvas');
+    tmpCanvas.style.height = this.height;
+    tmpCanvas.height = this.height;
+    tmpCanvas.style.width = this.width;
+    tmpCanvas.width = this.width;
+    this.tmpCtx = tmpCanvas.getContext('2d');
+    this.tmpCanvas = tmpCanvas;
+    this.timeId = null;
+  }
+
+  toNext() {
+    this.offset = 0;
+    this.createImage();
+    this.lastMoveTime = new Date().getTime();
+    toNextGame = true;
+  }
+
+  createImage() {
+    this.tmpCtx.clearRect(0, 0, this.width, this.height);
+    var nextImage = map.image;
+    var offsetPos = this.nextMapOffsetY * GAME_MAP.MAP_WIDTH * 4;
+    for (var y = 0; y < GAME_MAP.MAP_HEIGHT; y++) {
+      for (var x = 0; x < GAME_MAP.MAP_WIDTH; x++) {
+        var pos = (x * 4) + (y * GAME_MAP.MAP_WIDTH * 4);
+        var a = nextImage.data[pos + 3];
+        if (a == 0) continue;
+        var r = nextImage.data[pos];
+        var g = nextImage.data[pos + 1];
+        var b = nextImage.data[pos + 2];
+        this.image.data[offsetPos + pos] = r;
+        this.image.data[offsetPos + pos + 1] = g;
+        this.image.data[offsetPos + pos + 2] = b;
+        this.image.data[offsetPos + pos + 3] = a;
+      }
+    }
+    var curImageArray = [];
+    curImageArray.push(map.ctx.getImageData(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT));
+    curImageArray.push(bombMap.ctx.getImageData(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT));
+    curImageArray.push(player.ctx.getImageData(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT));
+    for (var y = 0; y < GAME_MAP.MAP_HEIGHT; y++) {
+      for (var x = 0; x < GAME_MAP.MAP_WIDTH; x++) {
+        for (var i = 0; i < curImageArray.length; i++) {
+          var pos = (x * 4) + (y * GAME_MAP.MAP_WIDTH * 4);
+          var a = curImageArray[i].data[pos + 3];
+          if (a == 0) continue;
+          var r = curImageArray[i].data[pos];
+          var g = curImageArray[i].data[pos + 1];
+          var b = curImageArray[i].data[pos + 2];
+          this.image.data[pos] = r;
+          this.image.data[pos + 1] = g;
+          this.image.data[pos + 2] = b;
+          this.image.data[pos + 3] = a;
+        }
+      }
+    }
+    this.tmpCtx.clearRect(0, 0, this.width, this.height);
+    this.tmpCtx.putImageData(this.image, 0, 0);
+  }
+
+  updateMapOffset() {
+    if (!toNextGame) return;
+    var currentTime = new Date().getTime();
+    var dt = (currentTime - this.lastMoveTime) / 1000.0;
+    var dy = GAME_MAP.BLOCK_SIZE * MAP_MOVE_SPEED * dt;
+    this.offset -= dy;
+    if (this.offset <= -this.nextMapOffsetY) {
+      toNextGame = false;
+      isClear = false;
+      initNextGame();
+    }
+  }
+
+  draw() {
+    this.updateMapOffset();
+    this.ctx.clearRect(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
+    if (toNextGame) {
+      this.ctx.putImageData(this.tmpCtx.getImageData(0, Math.floor(-this.offset), GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT), 0, 0);
+    }
   }
 }
 
@@ -444,16 +526,30 @@ function init() {
 
   bombMap = new BombMap(createCanvas());
   bombMap.createBombRandom();
-  bombMap.draw();
+  // bombMap.draw();
 
   player = new Player(0, 0, DIRECTION.RIGHT, 'blue', createCanvas());
-  player.draw();
+  // player.draw();
+
+  nextMap = new NextGameMap(createCanvas());
+  // nextMap.draw();
 
   // if ('ontouchstart' in document) {
     createTouchControlPads();
   // }
 
   requestAnimationFrame(update);
+}
+
+function initNextGame() {
+  player.y = 0;
+  player.ry = 0;
+  player.preY = 0;
+  player.prerY = 0;
+  bombMap.bombNum++;
+  bombMap.createBombRandom();
+  map.isAdoveGround = false;
+  map.createMapImage();
 }
 
 function resizeCanvases() {
@@ -507,35 +603,30 @@ function render() {
   map.draw();
   bombMap.draw();
   player.draw();
+  nextMap.draw();
 }
 
 function moveLeft() {
-  if (isGameOver) return;
   player.preMove(-1, 0, DIRECTION.LEFT);
 }
 
 function moveUp() {
-  if (isGameOver) return;
   player.preMove(0, -1, DIRECTION.UP);
 }
 
 function moveRight() {
-  if (isGameOver) return;
   player.preMove(1, 0, DIRECTION.RIGHT);
 }
 
 function moveDown() {
-  if (isGameOver) return;
   player.preMove(0, 1, DIRECTION.DOWN);
 }
 
 function moveLeftUp() {
-  if (isGameOver) return;
   player.preMove(-1, -1, DIRECTION.LEFT_UP);
 }
 
 function moveRightUp() {
-  if (isGameOver) return;
   player.preMove(1, -1, DIRECTION.RIGHT_UP);
 }
 
@@ -581,26 +672,12 @@ function createTouchControlPad(x, y, w, h) {
 
 function createTouchControlPads() {
   var eventName = 'click';
-  var leftUp = createTouchControlPad(
-    0,
-    0,
-    TOUCH_SPACE_SIZE_MIN,
-    TOUCH_SPACE_SIZE_MIN);
-  leftUp.addEventListener(eventName, moveLeftUp);
-
   var up = createTouchControlPad(
-    TOUCH_SPACE_SIZE_MIN,
     0,
-    BLOCK_NUM_WIDTH - (TOUCH_SPACE_SIZE_MIN * 2),
+    0,
+    BLOCK_NUM_WIDTH,
     TOUCH_SPACE_SIZE_MIN);
   up.addEventListener(eventName, moveUp);
-
-  var rightUp = createTouchControlPad(
-    BLOCK_NUM_WIDTH - TOUCH_SPACE_SIZE_MIN,
-    0,
-    TOUCH_SPACE_SIZE_MIN,
-    TOUCH_SPACE_SIZE_MIN);
-  rightUp.addEventListener(eventName, moveRightUp);
 
   var left = createTouchControlPad(
     0,
@@ -623,5 +700,5 @@ function createTouchControlPads() {
     TOUCH_SPACE_SIZE_MIN);
   down.addEventListener(eventName, moveDown);
 
-  touchControlPads = [leftUp, up, rightUp, left, right, down];
+  touchControlPads = [up, left, right, down];
 }
