@@ -3,11 +3,13 @@ const BLOCK_NUM_WIDTH = 20;
 const BACK_GROUND_COLOR = '#404040';
 
 const TOUCH_SPACE_SIZE_MIN = 5;
+const EXPLOSION_R_MAX = 2;
 
 // Block per second
-const HORIZONTAL_SPEED = 0.25;
-const VERTICAL_SPEED = 0.5;
+const HORIZONTAL_SPEED = 0.2;
+const VERTICAL_SPEED = 0.2;
 const MAP_MOVE_SPEED = 0.25;
+const EXPLOSION_SPEED = 0.2;
 
 var GAME_MAP = {
   MAP_HEIGHT : 0,
@@ -225,6 +227,8 @@ class BombMap {
     this.boms = [];
     this.clearBombs();
     this.bomsNumString = "";
+    this.explosionR = 0;
+    this.lastTime = 0;
   }
 
   clearBombs() {
@@ -268,6 +272,17 @@ class BombMap {
     return this.boms[x][y] == BOMB_STATUS.BOMB;
   }
 
+  updateExplosionR() {
+    var currentTime = new Date().getTime();
+    var dt = (currentTime - this.lastTime) / 1000.0;
+
+    var dr = GAME_MAP.BLOCK_SIZE * EXPLOSION_SPEED * dt;
+    this.explosionR += dr;
+    if (this.explosionR > EXPLOSION_R_MAX) {
+      this.explosionR = EXPLOSION_R_MAX;
+    }
+  }
+
   draw() {
     this.ctx.clearRect(0, 0, GAME_MAP.MAP_WIDTH, GAME_MAP.MAP_HEIGHT);
     this.ctx.textBaseline = 'middle';
@@ -306,10 +321,11 @@ class BombMap {
         0);
 
     if (isGameOver) {
+      this.updateExplosionR();
       this.ctx.arc(
           (map.endX * GAME_MAP.BLOCK_SIZE) + GAME_MAP.BLOCK_SIZE / 2,
           (map.endY * GAME_MAP.BLOCK_SIZE) + GAME_MAP.BLOCK_SIZE / 2,
-          GAME_MAP.BLOCK_SIZE,
+          this.explosionR * GAME_MAP.BLOCK_SIZE,
           0 * Math.PI / 180,
           360 * Math.PI / 180,
           false);
@@ -429,6 +445,7 @@ class GameMap {
       isGameOver = true;
       this.endX = x;
       this.endY = y;
+      bombMap.lastTime = new Date().getTime();
     }
   }
 
