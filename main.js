@@ -182,6 +182,8 @@ class Player {
 class BombMap {
   constructor(ctx) {
     this.ctx = ctx;
+    this.stageNum = 1;
+    this.stageNumString = "";
     this.bombNum = 10;
     this.boms = [];
     this.clearBombs();
@@ -203,6 +205,7 @@ class BombMap {
   }
 
   createBombRandom() {
+    this.clearBombs();
     var i = 0;
     while (i < this.bombNum) {
       var bombX = this.rand(0, BLOCK_NUM_WIDTH);
@@ -220,6 +223,7 @@ class BombMap {
         }
       }
     }
+    this.stageNumString = `Stage : ${this.stageNum}`;
     this.bomsNumString = `Bombs x ${this.bombNum}`;
   }
 
@@ -248,6 +252,12 @@ class BombMap {
         this.ctx.fillText(s, rx, ry);
       }
     }
+
+    this.ctx.textBaseline = 'top';
+    this.ctx.textAlign = 'left';
+    this.ctx.font = GAME_MAP.BLOCK_SIZE + "px serif";
+    this.ctx.fillStyle = "tomato";
+    this.ctx.fillText(this.stageNumString, 0, 0);
 
     this.ctx.textBaseline = 'top';
     this.ctx.textAlign = 'left';
@@ -528,7 +538,7 @@ function init() {
   bombMap.createBombRandom();
   // bombMap.draw();
 
-  player = new Player(0, 0, DIRECTION.RIGHT, 'blue', createCanvas());
+  player = new Player(Math.floor(BLOCK_NUM_WIDTH / 2), 0, DIRECTION.RIGHT, 'blue', createCanvas());
   // player.draw();
 
   nextMap = new NextGameMap(createCanvas());
@@ -546,7 +556,8 @@ function initNextGame() {
   player.ry = 0;
   player.preY = 0;
   player.prerY = 0;
-  bombMap.bombNum++;
+  bombMap.stageNum++;
+  bombMap.bombNum += 5;
   bombMap.createBombRandom();
   map.isAdoveGround = false;
   map.createMapImage();
